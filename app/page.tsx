@@ -21,9 +21,9 @@ interface MarketData {
 }
 
 const PERF_DATA = [
-  { system: "v7.3 (M5)", pnl: "+¥19,550", trades: 90, wr: "50.0%", pf: 1.70, p5: "58%", status: "BEST (CI>1.0)" },
+  { system: "v7.3+ (compound)", pnl: "+¥55,825", trades: 72, wr: "55.6%", pf: 2.06, p5: "72%", status: "BEST (+558%)" },
+  { system: "v7.3 (base)", pnl: "+¥19,550", trades: 90, wr: "50.0%", pf: 1.70, p5: "58%", status: "CI>1.0" },
   { system: "v5.3 (M15)", pnl: "+¥21,659", trades: 25, wr: "56.0%", pf: 2.21, p5: "93%", status: "Best PF" },
-  { system: "v7.2 (M5)", pnl: "+¥15,844", trades: 118, wr: "44.1%", pf: 1.39, p5: "52%", status: "Previous" },
 ];
 
 function sessionBadge(s: string) {

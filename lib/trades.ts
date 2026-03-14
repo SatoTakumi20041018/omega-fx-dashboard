@@ -126,11 +126,12 @@ export function closeTrade(
   if (pnl_jpy > 0) {
     acc.wins++;
     acc.consec_losses = 0;
-    acc.lot_mult = Math.min(acc.lot_mult * 1.3, 2.5);
+    acc.lot_mult = Math.min(acc.lot_mult * 1.5, 2.5);  // 1.5x after win
   } else {
     acc.losses++;
     acc.consec_losses++;
-    acc.lot_mult = 1.0;
+    // NO RESET — keep previous lot mult, just don't increase
+    acc.lot_mult = Math.max(1.0, acc.lot_mult * 0.85);  // gentle 15% reduction
     acc.daily_loss += Math.abs(pnl_jpy);
   }
   saveAccount(acc);
