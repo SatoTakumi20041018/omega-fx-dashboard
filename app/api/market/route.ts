@@ -112,16 +112,21 @@ export async function GET() {
     const signals = checkSignals(indicators, hourUTC);
 
     // Price history for chart (last 200 M5 bars)
-    const chartData = m5.closes.slice(-200).map((c, i) => ({
-      time: new Date(m5.timestamps[m5.timestamps.length - 200 + i] * 1000).toISOString(),
+    const chartLen = Math.min(200, m5.closes.length);
+    const chartStart = m5.closes.length - chartLen;
+    const chartData = m5.closes.slice(-chartLen).map((c, i) => ({
+      time: new Date(m5.timestamps[chartStart + i] * 1000).toISOString(),
       price: c,
     }));
 
     // RSI history for chart
-    const rsiData = m15_rsi14.slice(-100).map((r, i) => {
-      const idx = m15.timestamps.length - 100 + i;
+    const rsiLen = Math.min(100, m15_rsi14.length);
+    const rsiStart = m15_rsi14.length - rsiLen;
+    const rsiData = m15_rsi14.slice(-rsiLen).map((r, i) => {
+      const idx = rsiStart + i;
       return {
-        time: idx >= 0 ? new Date(m15.timestamps[idx] * 1000).toISOString() : "",
+        time: idx >= 0 && idx < m15.timestamps.length
+          ? new Date(m15.timestamps[idx] * 1000).toISOString() : "",
         rsi: isNaN(r) ? null : r,
       };
     }).filter(d => d.time);
