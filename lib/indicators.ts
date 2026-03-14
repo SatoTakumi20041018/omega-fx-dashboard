@@ -178,10 +178,10 @@ export function checkSignals(ind: Indicators, hourUTC: number): Signal[] {
     if (ind.h1_macd > 0) lc++;
 
     if (lc >= 5) {
-      const tp = Math.max(4, 1.5 * m15_atr);
-      const sl = Math.max(2, 0.5 * m15_atr);
+      const tp = Math.max(4, 2.0 * m15_atr);
+      const sl = Math.max(2.5, 0.6 * m15_atr);
       signals.push({
-        system: "v7.1", direction: "BUY",
+        system: "v7.2", direction: "BUY",
         entry: ind.price, tp: ind.price + tp * pip, sl: ind.price - sl * pip,
         tp_pips: tp, sl_pips: sl, rr: tp / sl, confidence: lc / 8,
         reason: `${lc}/8 confirms`,
@@ -201,10 +201,10 @@ export function checkSignals(ind: Indicators, hourUTC: number): Signal[] {
     if (ind.h1_macd < 0) sc++;
 
     if (sc >= 5) {
-      const tp = Math.max(4, 1.5 * m15_atr);
+      const tp = Math.max(4, 2.0 * m15_atr);
       const sl = Math.max(2.5, 0.6 * m15_atr);
       signals.push({
-        system: "v7.1", direction: "SELL",
+        system: "v7.2", direction: "SELL",
         entry: ind.price, tp: ind.price - tp * pip, sl: ind.price + sl * pip,
         tp_pips: tp, sl_pips: sl, rr: tp / sl, confidence: sc / 8,
         reason: `${sc}/8 confirms`,
