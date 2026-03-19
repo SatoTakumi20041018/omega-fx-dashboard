@@ -104,7 +104,7 @@ export function closeTrade(
   else if (reason === "SL") exitPrice = trade.sl;
 
   const pnl_pips = dir * (exitPrice - trade.entry) / PIP;
-  const cost_pips = 0.71; // approximate total cost
+  const cost_pips = 1.2; // realistic: spread 0.5-0.8 + slippage 0.3-0.5
   const net_pips = pnl_pips - cost_pips;
   const pnl_jpy = net_pips * trade.lot * 100000 * PIP;
 
@@ -126,12 +126,16 @@ export function closeTrade(
   if (pnl_jpy > 0) {
     acc.wins++;
     acc.consec_losses = 0;
-    acc.lot_mult = Math.min(acc.lot_mult * 1.5, 2.5);  // 1.5x after win
+    acc.lot_mult = Math.min(acc.lot_mult * 1.3, 2.5);
   } else {
     acc.losses++;
     acc.consec_losses++;
-    // NO RESET — keep previous lot mult, just don't increase
-    acc.lot_mult = Math.max(1.0, acc.lot_mult * 0.85);  // gentle 15% reduction
+    // Gradual reduction: 1連敗50%, 2連敗25%
+    if (acc.consec_losses === 1) {
+      acc.lot_mult = Math.max(acc.lot_mult * 0.5, 0.5);
+    } else if (acc.consec_losses >= 2) {
+      acc.lot_mult = 0.25;
+    }
     acc.daily_loss += Math.abs(pnl_jpy);
   }
   saveAccount(acc);

@@ -20,6 +20,57 @@ interface MarketData {
   session: string;
 }
 
+interface AutoTrade {
+  timestamp: string;
+  pair: string;
+  direction: string | number;
+  entry_price: number;
+  tp_price?: number;
+  sl_price?: number;
+  tp_pips?: number;
+  sl_pips?: number;
+  exit_price?: number;
+  exit_reason?: string;
+  pnl_pips?: number;
+  pnl_jpy?: number;
+  won?: boolean;
+  lot: number;
+  confirms?: number;
+  bars_held?: number;
+  trail_active?: boolean;
+  mt5_ticket?: number;
+  status: "open" | "closed";
+  label?: string;
+}
+
+interface AutoState {
+  equity: number;
+  total_pnl: number;
+  total_trades: number;
+  total_wins: number;
+  consec_losses: number;
+  lot_mult: number;
+  daily_loss: number;
+  last_day: string;
+  open_position: {
+    direction: number;
+    entry: number;
+    tp: number;
+    sl: number;
+    lot: number;
+    timestamp: string;
+    trail_active: boolean;
+    bars_held: number;
+    live: boolean;
+    mt5_ticket?: number;
+  } | null;
+}
+
+interface AutoTraderData {
+  trades: AutoTrade[];
+  state: AutoState;
+}
+
 const PERF_DATA = [
   { system: "v7.3+ (compound)", pnl: "+¥55,825", trades: 72, wr: "55.6%", pf: 2.06, p5: "72%", status: "BEST (+558%)" },
   { system: "v7.3 (base)", pnl: "+¥19,550", trades: 90, wr: "50.0%", pf: 1.70, p5: "58%", status: "CI>1.0" },
@@ -55,12 +106,29 @@ export default function Dashboard() {
   const [opens, setOpens] = useState<Trade[]>([]);
   const [closed, setClosed] = useState<Trade[]>([]);
   const [flash, setFlash] = useState<string | null>(null);
-  const [tab, setTab] = useState<"monitor" | "trade" | "journal">("monitor");
+  const [tab, setTab] = useState<"monitor" | "trade" | "journal" | "live">("monitor");
+  const [autoData, setAutoData] = useState<AutoTraderData | null>(null);
+  const [autoError, setAutoError] = useState<string | null>(null);
+  const [autoLastUpdate, setAutoLastUpdate] = useState<Date | null>(null);
 
   const refreshTrades = useCallback(() => {
     setAccount(loadAccount());
     setOpens(getOpenTrades());
     setClosed(getClosedTrades());
+  }, []);
+
+  const fetchAutoTrader = useCallback(async () => {
+    try {
+      const res = await fetch("/api/trades", { cache: "no-store" });
+      if (!res.ok) throw new Error(`API ${res.status}`);
+      const json = await res.json();
+      if (json.error) throw new Error(json.error);
+      setAutoData(json);
+      setAutoError(null);
+      setAutoLastUpdate(new Date());
+    } catch (e: unknown) {
+      setAutoError(e instanceof Error ? e.message : String(e));
+    }
   }, []);
 
   const fetchData = useCallback(async () => {
@@ -97,6 +165,12 @@ export default function Dashboard() {
     const interval = setInterval(fetchData, 60000);
     return () => clearInterval(interval);
   }, [fetchData, refreshTrades]);
+
+  useEffect(() => {
+    fetchAutoTrader();
+    const interval = setInterval(fetchAutoTrader, 30000);
+    return () => clearInterval(interval);
+  }, [fetchAutoTrader]);
 
   useEffect(() => {
     if (flash) {
@@ -192,12 +266,15 @@ export default function Dashboard() {
 
       {/* Tabs */}
       <div className="flex gap-1 bg-gray-900 rounded-lg p-1">
-        {(["monitor", "trade", "journal"] as const).map(t => (
+        {(["monitor", "trade", "journal", "live"] as const).map(t => (
           <button key={t} onClick={() => setTab(t)}
             className={`flex-1 py-2 px-4 rounded-md text-sm font-bold transition-colors ${
               tab === t ? "bg-gray-800 text-white" : "text-gray-500 hover:text-gray-300"
             }`}>
-            {t === "monitor" ? "Monitor" : t === "trade" ? `Trade${opens.length > 0 ? ` (${opens.length})` : ""}` : `Journal (${closed.length})`}
+            {t === "monitor" ? "Monitor"
+              : t === "trade" ? `Trade${opens.length > 0 ? ` (${opens.length})` : ""}`
+              : t === "journal" ? `Journal (${closed.length})`
+              : "Live"}
           </button>
         ))}
       </div>
@@ -564,6 +641,175 @@ export default function Dashboard() {
           </div>
         </>
       )}
+
+      {/* ==================== LIVE TAB ==================== */}
+      {tab === "live" && (() => {
+        const closedAuto = autoData?.trades.filter(t => t.status === "closed") || [];
+        const hasAnyMt5 = autoData?.trades.some(t => t.mt5_ticket != null) || false;
+        const isLive = hasAnyMt5 || (autoData?.state.open_position?.live === true);
+        const st = autoData?.state;
+        const winRate = st && st.total_trades > 0 ? (st.total_wins / st.total_trades * 100).toFixed(1) : "—";
+        const last10 = closedAuto.slice(-10).reverse();
+        const pos = st?.open_position;
+        const posDir = pos ? (pos.direction === 1 ? "BUY" : "SELL") : null;
+
+        return (
+          <>
+            {/* Mode Badge + Status */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <span className={`px-4 py-1.5 rounded-full text-sm font-bold border ${
+                  isLive
+                    ? "bg-green-500/20 text-green-400 border-green-500/40"
+                    : "bg-yellow-500/20 text-yellow-400 border-yellow-500/40"
+                }`}>
+                  {isLive ? "LIVE" : "PAPER"} v7.3
+                </span>
+                {autoLastUpdate && (
+                  <span className="text-xs text-gray-500">
+                    Updated: {autoLastUpdate.toLocaleString("ja-JP")} (30s poll)
+                  </span>
+                )}
+              </div>
+              {autoError && (
+                <span className="text-xs text-red-400">Error: {autoError}</span>
+              )}
+            </div>
+
+            {/* Account Metrics */}
+            {st && (
+              <div className="grid grid-cols-4 gap-4">
+                <Metric label="Equity" value={`¥${Math.round(st.equity).toLocaleString()}`} />
+                <Metric label="Total P&L" value={`${st.total_pnl >= 0 ? "+" : ""}¥${Math.round(st.total_pnl).toLocaleString()}`} />
+                <Metric label="Win Rate" value={`${winRate}${winRate !== "—" ? "%" : ""}`}
+                  sub={`${st.total_wins}W / ${st.total_trades - st.total_wins}L of ${st.total_trades}`} />
+                <Metric label="Risk State" value={`x${st.lot_mult.toFixed(2)}`}
+                  sub={`Consec losses: ${st.consec_losses} | Daily loss: ¥${Math.round(st.daily_loss).toLocaleString()}`} />
+              </div>
+            )}
+
+            {/* Open Position */}
+            <div className="bg-gray-900 rounded-xl p-5 border border-gray-800">
+              <h3 className="text-sm font-bold text-gray-400 mb-4">Open Position</h3>
+              {pos ? (
+                <div className={`rounded-lg p-4 border ${
+                  posDir === "BUY" ? "border-green-800/50 bg-green-950/20" : "border-red-800/50 bg-red-950/20"
+                }`}>
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                      <span className={`text-2xl font-bold ${posDir === "BUY" ? "text-green-400" : "text-red-400"}`}>
+                        {posDir}
+                      </span>
+                      <span className="text-sm text-gray-400">{pos.lot} lot</span>
+                      {pos.mt5_ticket && (
+                        <span className="text-xs text-gray-600">#{pos.mt5_ticket}</span>
+                      )}
+                      {pos.trail_active && (
+                        <span className="px-2 py-0.5 rounded text-xs bg-blue-500/20 text-blue-400 border border-blue-500/30">
+                          TRAILING
+                        </span>
+                      )}
+                    </div>
+                    <span className="text-xs text-gray-500">
+                      {new Date(pos.timestamp).toLocaleString("ja-JP")}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-4 gap-3">
+                    <Metric label="Entry" value={pos.entry.toFixed(3)} />
+                    <Metric label="TP" value={pos.tp.toFixed(3)} />
+                    <Metric label="SL" value={pos.sl.toFixed(3)} />
+                    <Metric label="Bars Held" value={`${pos.bars_held}`} />
+                  </div>
+                </div>
+              ) : (
+                <p className="text-gray-600 text-center py-4">No open position</p>
+              )}
+            </div>
+
+            {/* Equity Curve (from closed trades) */}
+            {closedAuto.length > 1 && (
+              <div className="bg-gray-900 rounded-xl p-5 border border-gray-800">
+                <h3 className="text-sm font-bold text-gray-400 mb-4">Equity Curve</h3>
+                <ResponsiveContainer width="100%" height={200}>
+                  <AreaChart data={(() => {
+                    let eq = 10000;
+                    return closedAuto.map((t, i) => {
+                      eq += (t.pnl_jpy || 0);
+                      return { trade: i + 1, equity: Math.round(eq) };
+                    });
+                  })()}>
+                    <defs>
+                      <linearGradient id="eqGrad" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#22c55e" stopOpacity={0.3} />
+                        <stop offset="95%" stopColor="#22c55e" stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" />
+                    <XAxis dataKey="trade" stroke="#4b5563" fontSize={12} />
+                    <YAxis stroke="#4b5563" fontSize={12} tickFormatter={(v: number) => `¥${v.toLocaleString()}`} />
+                    <Tooltip contentStyle={{ background: "#111827", border: "1px solid #374151", borderRadius: "8px" }}
+                      formatter={(v) => [`¥${Number(v).toLocaleString()}`, "Equity"]} />
+                    <ReferenceLine y={10000} stroke="#6b7280" strokeDasharray="5 5" />
+                    <Area type="monotone" dataKey="equity" stroke="#22c55e" fill="url(#eqGrad)" strokeWidth={2} />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+            )}
+
+            {/* Last 10 Trades */}
+            <div className="bg-gray-900 rounded-xl p-5 border border-gray-800">
+              <h3 className="text-sm font-bold text-gray-400 mb-4">Last 10 Trades ({closedAuto.length} total)</h3>
+              {last10.length === 0 ? (
+                <p className="text-gray-600 text-center py-4">No completed trades yet</p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="text-gray-500 border-b border-gray-800">
+                        <th className="text-left py-2">Time</th>
+                        <th className="text-left py-2">Dir</th>
+                        <th className="text-right py-2">Entry</th>
+                        <th className="text-right py-2">Exit</th>
+                        <th className="text-right py-2">Pips</th>
+                        <th className="text-right py-2">P&L</th>
+                        <th className="text-right py-2">Reason</th>
+                        <th className="text-right py-2">Ticket</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {last10.map((t, i) => {
+                        const dir = typeof t.direction === "number"
+                          ? (t.direction === 1 ? "BUY" : "SELL")
+                          : String(t.direction).toUpperCase();
+                        return (
+                          <tr key={i} className="border-b border-gray-800/50 hover:bg-gray-800/30">
+                            <td className="py-2 text-gray-500">
+                              {new Date(t.timestamp).toLocaleString("ja-JP", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+                            </td>
+                            <td className={`py-2 font-bold ${dir === "BUY" ? "text-green-400" : "text-red-400"}`}>{dir}</td>
+                            <td className="py-2 text-right font-mono">{t.entry_price.toFixed(3)}</td>
+                            <td className="py-2 text-right font-mono">{t.exit_price?.toFixed(3) || "—"}</td>
+                            <td className={`py-2 text-right ${(t.pnl_pips || 0) >= 0 ? "text-green-400" : "text-red-400"}`}>
+                              {t.pnl_pips != null ? `${t.pnl_pips >= 0 ? "+" : ""}${t.pnl_pips.toFixed(1)}` : "—"}
+                            </td>
+                            <td className={`py-2 text-right font-bold ${(t.pnl_jpy || 0) >= 0 ? "text-green-400" : "text-red-400"}`}>
+                              {t.pnl_jpy != null ? `${t.pnl_jpy >= 0 ? "+" : ""}¥${Math.round(t.pnl_jpy).toLocaleString()}` : "—"}
+                            </td>
+                            <td className="py-2 text-right text-gray-500">{t.exit_reason || "—"}</td>
+                            <td className="py-2 text-right text-gray-600 font-mono text-xs">
+                              {t.mt5_ticket || "paper"}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </>
+        );
+      })()}
 
       {/* Footer */}
       <div className="text-center text-xs text-gray-600 py-4">
